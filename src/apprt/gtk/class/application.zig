@@ -2017,6 +2017,8 @@ const Action = struct {
                     .down => .{ .spatial = .down },
                     .left => .{ .spatial = .left },
                     .right => .{ .spatial = .right },
+                    // Positive integer values are 1-based split indices.
+                    else => .{ .index = @intCast(@intFromEnum(to)) },
                 });
             },
         }

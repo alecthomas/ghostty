@@ -575,13 +575,16 @@ typedef enum {
 } ghostty_action_split_direction_e;
 
 // apprt.action.GotoSplit
+//
+// Negative values are reserved for the named directional/order targets
+// below. Positive values are 1-based split indices.
 typedef enum {
-  GHOSTTY_GOTO_SPLIT_PREVIOUS,
-  GHOSTTY_GOTO_SPLIT_NEXT,
-  GHOSTTY_GOTO_SPLIT_UP,
-  GHOSTTY_GOTO_SPLIT_LEFT,
-  GHOSTTY_GOTO_SPLIT_DOWN,
-  GHOSTTY_GOTO_SPLIT_RIGHT,
+  GHOSTTY_GOTO_SPLIT_PREVIOUS = -1,
+  GHOSTTY_GOTO_SPLIT_NEXT = -2,
+  GHOSTTY_GOTO_SPLIT_UP = -3,
+  GHOSTTY_GOTO_SPLIT_LEFT = -4,
+  GHOSTTY_GOTO_SPLIT_DOWN = -5,
+  GHOSTTY_GOTO_SPLIT_RIGHT = -6,
 } ghostty_action_goto_split_e;
 
 // apprt.action.GotoWindow

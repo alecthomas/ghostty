@@ -5536,10 +5536,13 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             .{ .surface = self },
             .goto_split,
             switch (direction) {
-                inline else => |tag| @field(
-                    apprt.action.GotoSplit,
-                    @tagName(tag),
-                ),
+                .previous => .previous,
+                .next => .next,
+                .up => .up,
+                .down => .down,
+                .left => .left,
+                .right => .right,
+                .index => |n| @enumFromInt(@as(c_int, @intCast(n))),
             },
         ),
 

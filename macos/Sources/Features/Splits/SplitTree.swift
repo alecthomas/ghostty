@@ -85,6 +85,11 @@ struct SplitTree<ViewType: NSView & Codable & Identifiable> {
         // layout to find the spatially correct node to move to. Spatial navigation
         // is always from the top-left corner for now.
         case spatial(Spatial.Direction)
+
+        // Jump to the leaf with the given 1-based index in iteration order.
+        // Out-of-range indices clamp to the last leaf. An index <= 0 is
+        // treated as 1.
+        case index(Int)
     }
 }
 
@@ -228,6 +233,12 @@ extension SplitTree {
                 case .down, .right: bestNode.node.rightmostLeaf()
                 }
             }
+
+        case .index(let n):
+            let allLeaves = root.leaves()
+            guard !allLeaves.isEmpty else { return nil }
+            let clamped = Swift.max(0, Swift.min(n - 1, allLeaves.count - 1))
+            return allLeaves[clamped]
         }
     }
 

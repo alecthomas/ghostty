@@ -604,8 +604,11 @@ pub const Action = union(enum) {
     new_split: SplitDirection,
 
     /// Focus on a split either in the specified direction (`right`, `down`,
-    /// `left` and `up`), or in the adjacent split in the order of creation
-    /// (`previous` and `next`).
+    /// `left` and `up`), in the adjacent split in the order of creation
+    /// (`previous` and `next`), or by 1-based split index (e.g. `goto_split:1`).
+    ///
+    /// If the split index is higher than the number of splits, this will go
+    /// to the last split.
     goto_split: SplitFocusDirection,
 
     /// Focus on either the previous window or the next one ('previous', 'next')
@@ -1004,7 +1007,7 @@ pub const Action = union(enum) {
         pub const default: SplitDirection = .auto;
     };
 
-    pub const SplitFocusDirection = enum {
+    pub const SplitFocusDirection = union(enum) {
         previous,
         next,
         up,
@@ -1012,18 +1015,48 @@ pub const Action = union(enum) {
         down,
         right,
 
+        /// 1-based index of a split to focus.
+        index: u32,
+
         pub fn parse(input: []const u8) !SplitFocusDirection {
-            return std.meta.stringToEnum(SplitFocusDirection, input) orelse {
-                // For backwards compatibility we map "top" and "bottom" onto the enum
-                // values "up" and "down"
-                if (std.mem.eql(u8, input, "top")) {
-                    return .up;
-                } else if (std.mem.eql(u8, input, "bottom")) {
-                    return .down;
-                } else {
-                    return Error.InvalidFormat;
-                }
-            };
+            // Try parsing as a 1-based integer index first. The cap matches
+            // positive c_int range so the value can be passed through the
+            // apprt's c_int-backed GotoSplit enum without aliasing the
+            // negative directional sentinels.
+            if (std.fmt.parseInt(u32, input, 10)) |n| {
+                if (n == 0 or n > std.math.maxInt(i32)) return Error.InvalidFormat;
+                return .{ .index = n };
+            } else |_| {}
+
+            if (std.mem.eql(u8, input, "previous")) return .previous;
+            if (std.mem.eql(u8, input, "next")) return .next;
+            // For backwards compatibility we map "top" and "bottom" onto
+            // "up" and "down".
+            if (std.mem.eql(u8, input, "up") or
+                std.mem.eql(u8, input, "top")) return .up;
+            if (std.mem.eql(u8, input, "down") or
+                std.mem.eql(u8, input, "bottom")) return .down;
+            if (std.mem.eql(u8, input, "left")) return .left;
+            if (std.mem.eql(u8, input, "right")) return .right;
+            return Error.InvalidFormat;
+        }
+
+        pub fn format(
+            self: SplitFocusDirection,
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            switch (self) {
+                .index => |n| try writer.print("{d}", .{n}),
+                inline else => |_, tag| try writer.writeAll(@tagName(tag)),
+            }
+        }
+
+        pub fn clone(
+            self: SplitFocusDirection,
+            alloc: Allocator,
+        ) Allocator.Error!SplitFocusDirection {
+            _ = alloc;
+            return self;
         }
 
         test "parse" {
@@ -1040,8 +1073,24 @@ pub const Action = union(enum) {
             try testing.expectEqual(.up, try SplitFocusDirection.parse("top"));
             try testing.expectEqual(.down, try SplitFocusDirection.parse("bottom"));
 
+            try testing.expectEqual(
+                SplitFocusDirection{ .index = 1 },
+                try SplitFocusDirection.parse("1"),
+            );
+            try testing.expectEqual(
+                SplitFocusDirection{ .index = 9 },
+                try SplitFocusDirection.parse("9"),
+            );
+            try testing.expectEqual(
+                SplitFocusDirection{ .index = 100 },
+                try SplitFocusDirection.parse("100"),
+            );
+
             try testing.expectError(error.InvalidFormat, SplitFocusDirection.parse(""));
             try testing.expectError(error.InvalidFormat, SplitFocusDirection.parse("green"));
+            try testing.expectError(error.InvalidFormat, SplitFocusDirection.parse("0"));
+            try testing.expectError(error.InvalidFormat, SplitFocusDirection.parse("-1"));
+            try testing.expectError(error.InvalidFormat, SplitFocusDirection.parse("index"));
         }
     };
 
@@ -1503,6 +1552,12 @@ pub const Action = union(enum) {
                         }
                     }
                 },
+                .@"union" => {
+                    if (!@hasDecl(Value, "format")) {
+                        @compileError("unhandled union type: " ++ @typeName(Value));
+                    }
+                    try value.format(writer);
+                },
                 else => @compileError("unhandled type: " ++ @typeName(Value)),
             },
         }
@@ -1544,6 +1599,8 @@ pub const Action = union(enum) {
                 value
             else
                 try value.clone(alloc),
+
+            .@"union" => try value.clone(alloc),
 
             else => {
                 @compileLog(@TypeOf(value));

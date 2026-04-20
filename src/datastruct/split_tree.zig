@@ -244,6 +244,11 @@ pub fn SplitTree(comptime V: type) type {
             /// based on the nearest surface in the given direction visually
             /// as the surfaces are laid out on a 2D grid.
             spatial: Spatial.Direction,
+
+            /// Jump to a view by 1-based index in iteration order. If the
+            /// index is greater than the number of views, the last view is
+            /// used. Index 0 is treated as 1.
+            index: u32,
         };
 
         /// Goto a view from a certain point in the split tree. Returns null
@@ -267,7 +272,24 @@ pub fn SplitTree(comptime V: type) type {
                     defer sp.deinit(alloc);
                     break :spatial self.nearestWrapped(sp, from, d);
                 },
+                .index => |n| self.byIndex(n),
             };
+        }
+
+        /// Returns the handle of the Nth view (1-based) in iteration
+        /// order. If N is greater than the number of views, the last
+        /// view is returned. If the tree is empty, returns null.
+        fn byIndex(self: *const Self, n: u32) ?Node.Handle {
+            const target: u32 = if (n == 0) 1 else n;
+            var it = self.iterator();
+            var last: ?Node.Handle = null;
+            var seen: u32 = 0;
+            while (it.next()) |entry| {
+                seen += 1;
+                last = entry.handle;
+                if (seen == target) return entry.handle;
+            }
+            return last;
         }
 
         pub const Side = enum { left, right };
@@ -2085,6 +2107,96 @@ test "SplitTree: spatial goto" {
             \\
         );
     }
+}
+
+test "SplitTree: goto by index" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+
+    // A | B horizontal
+    var splitAB = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer splitAB.deinit();
+
+    // (A | B) with C below A
+    var split = try splitAB.split(
+        alloc,
+        at: {
+            var it = splitAB.iterator();
+            break :at while (it.next()) |entry| {
+                if (std.mem.eql(u8, entry.view.label, "A")) {
+                    break entry.handle;
+                }
+            } else return error.NotFound;
+        },
+        .down,
+        0.5,
+        &t3,
+    );
+    defer split.deinit();
+
+    // Capture iteration order so the test stays correct regardless of
+    // internal node ordering.
+    var order: [3][]const u8 = undefined;
+    {
+        var it = split.iterator();
+        var i: usize = 0;
+        while (it.next()) |entry| : (i += 1) {
+            order[i] = entry.view.label;
+        }
+        try testing.expectEqual(@as(usize, 3), i);
+    }
+
+    const from: TestTree.Node.Handle = .root;
+
+    // Index 1 -> first leaf
+    {
+        const target = (try split.goto(alloc, from, .{ .index = 1 })).?;
+        try testing.expectEqualStrings(order[0], split.nodes[target.idx()].leaf.label);
+    }
+
+    // Index 2 -> second leaf
+    {
+        const target = (try split.goto(alloc, from, .{ .index = 2 })).?;
+        try testing.expectEqualStrings(order[1], split.nodes[target.idx()].leaf.label);
+    }
+
+    // Index 3 -> third leaf
+    {
+        const target = (try split.goto(alloc, from, .{ .index = 3 })).?;
+        try testing.expectEqualStrings(order[2], split.nodes[target.idx()].leaf.label);
+    }
+
+    // Out-of-range index clamps to last leaf
+    {
+        const target = (try split.goto(alloc, from, .{ .index = 99 })).?;
+        try testing.expectEqualStrings(order[2], split.nodes[target.idx()].leaf.label);
+    }
+
+    // Index 0 is treated as 1
+    {
+        const target = (try split.goto(alloc, from, .{ .index = 0 })).?;
+        try testing.expectEqualStrings(order[0], split.nodes[target.idx()].leaf.label);
+    }
+}
+
+test "SplitTree: goto by index on empty tree" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var empty: TestTree = .empty;
+    defer empty.deinit();
+
+    try testing.expect((try empty.goto(alloc, .root, .{ .index = 1 })) == null);
 }
 
 test "SplitTree: resize" {

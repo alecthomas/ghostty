@@ -133,8 +133,16 @@ extension Ghostty {
     enum SplitFocusDirection {
         case previous, next, up, down, left, right
 
+        /// Jump to the split with the given 1-based index.
+        case index(Int)
+
         /// Initialize from a Ghostty API enum.
         static func from(direction: ghostty_action_goto_split_e) -> Self? {
+            // Positive raw values are 1-based split indices.
+            if direction.rawValue > 0 {
+                return .index(Int(direction.rawValue))
+            }
+
             switch direction {
             case GHOSTTY_GOTO_SPLIT_PREVIOUS:
                 return .previous
@@ -178,6 +186,9 @@ extension Ghostty {
 
             case .right:
                 return GHOSTTY_GOTO_SPLIT_RIGHT
+
+            case .index(let n):
+                return ghostty_action_goto_split_e(rawValue: Int32(n))
             }
         }
     }
@@ -240,6 +251,9 @@ extension Ghostty.SplitFocusDirection {
 
         case .right:
             return .spatial(.right)
+
+        case .index(let n):
+            return .index(n)
         }
     }
 }

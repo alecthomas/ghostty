@@ -171,6 +171,29 @@ struct SplitTreeTests {
         #expect(target === view1)
     }
 
+    @Test func focusTargetByIndexReturnsNthLeaf() throws {
+        let (tree, view1, view2) = try makeHorizontalSplit()
+        #expect(tree.focusTarget(for: .index(1), from: .leaf(view: view1)) === view1)
+        #expect(tree.focusTarget(for: .index(2), from: .leaf(view: view1)) === view2)
+    }
+
+    @Test func focusTargetByIndexClampsOutOfRangeToLast() throws {
+        let (tree, view1, view2) = try makeHorizontalSplit()
+        #expect(tree.focusTarget(for: .index(99), from: .leaf(view: view1)) === view2)
+    }
+
+    @Test func focusTargetByIndexZeroOrNegativeUsesFirst() throws {
+        let (tree, view1, _) = try makeHorizontalSplit()
+        #expect(tree.focusTarget(for: .index(0), from: .leaf(view: view1)) === view1)
+        #expect(tree.focusTarget(for: .index(-3), from: .leaf(view: view1)) === view1)
+    }
+
+    @Test func focusTargetByIndexOnEmptyTreeReturnsNil() {
+        let tree = SplitTree<MockView>()
+        let view = MockView()
+        #expect(tree.focusTarget(for: .index(1), from: .leaf(view: view)) == nil)
+    }
+
     // MARK: - Equalized
 
     @Test func equalizedAdjustsRatioByLeafCount() throws {
